@@ -517,7 +517,7 @@ function getCalendarList() {
       for (let i = 0; i < calendars.items.length; i++) {
         const calendar = calendars.items[i]
         result.push({ summary: calendar.summary, id: calendar.id })
-        //        console.log('%s (ID: %s)', calendar.summary, calendar.id)
+        // console.log('%s (ID: %s)', calendar.summary, calendar.id)
       }
     } else {
       console.log('No calendars found.')

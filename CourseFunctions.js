@@ -1,4 +1,18 @@
 /**
+ * Find the presenters email - if we have one.
+ * @param {*} presenterName
+ * @returns presenter sheet object (or undefined)
+ */
+function getPresenter(presenterName) {
+  //get presenterDetail sheet
+  const presenterData = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName('PresenterDetails')
+    .getDataRange()
+    .getValues()
+  const allPresenters = getJsonArrayFromData(presenterData)
+  return allPresenters.find((presenter) => presenter.name === presenterName)
+}
+/**
  * Get the attendees from the sheet and populate a hyperlink with mailto: bcc items
  * 2 Hyperlinks are coonstructed 1 for Outlook (with ; delimiter) and one for Mac (with , delimiter)
  */
@@ -49,7 +63,11 @@ function print_attendance() {
 
   var pdfFile = makePDFfromRange(selectedRange, fileName, 'Attendance Sheets')
 
-  var recipient = sheetToExport.getRange('O3').getDisplayValue()
+  var recipientEmail = sheetToExport.getRange('O3').getDisplayValue()
+  const thisPresenter = getPresenter(sheetToExport.getRange('M3').getDisplayValue())
+  const presenterEmail = thisPresenter ? thisPresenter.email : ''
+  var recipient = recipientEmail === presenterEmail ? recipientEmail : `${recipientEmail}; ${presenterEmail}`
+
   var subject = courseTitle + ' - Attendance Sheet'
   var body =
     '\n\nAttached is the registration sheet for the course.\n\nPlease let us know if there are any changes required.\n\n\nU3A Team'
@@ -250,8 +268,20 @@ function createSessionAdviceEmail() {
       // (course) => course.summary.toString().toLowerCase() === thisSession.summary.toString().toLowerCase() Stop DUPs
       (course) => course.summary.toString() === thisSession.summary.toString()
     )
-    const recipient = thisCourse.email
-    const subject = 'U3A: ' + thisSession.summary + '  -  ' + courseDateTime
+    const recipientEmail = thisCourse.email
+    const thisPresenter = getPresenter(thisCourse.presenter)
+    const presenterEmail = thisPresenter ? thisPresenter.email : ''
+    const recipient = recipientEmail === presenterEmail ? recipientEmail : `${recipientEmail}; ${presenterEmail}`
+
+    // now do contact details
+    const contactName = thisCourse.contact
+    const contactEmail = thisCourse.email
+    let contactString = `<a href="mailto:${contactEmail}">${contactName}</a>`
+    if (thisPresenter && recipientEmail != presenterEmail) {
+      contactString += ` OR <a href="mailto:${presenterEmail}">${thisCourse.presenter}</a>`
+    }
+
+    let subject = 'U3A: ' + thisSession.summary + '  -  ' + courseDateTime
 
     const membersGoing = allDB
       .filter((dbEntry) => dbEntry.goingTo.toString().toLowerCase() === thisCourse.title.toString().toLowerCase())
@@ -267,12 +297,17 @@ function createSessionAdviceEmail() {
       courseSummary: thisSession.summary,
       startDateTime: courseDateTime,
       courseLocation: thisSession.location,
-      contact: recipient,
+      contact: contactString,
     }
 
-    const templateEmailSubject = thisSession.location.toLowerCase().includes('zoom')
-      ? 'TEMPLATE - Zoom Class Advice'
-      : 'TEMPLATE - U3A Class Advice'
+    let templateEmailSubject = 'TEMPLATE - U3A Class Advice'
+    if (thisSession.location.toLowerCase().includes('zoom')) {
+      templateEmailSubject = 'TEMPLATE - Zoom Class Advice'
+    }
+    if (thisCourse.courseStatus === 'Cancelled') {
+      templateEmailSubject = 'TEMPLATE - U3A Class Cancelled'
+      subject = 'U3A: SESSION CANCELLED - ' + thisSession.summary
+    }
 
     // get the draft Gmail message to use as a template
     const emailTemplate = getGmailTemplateFromDrafts_(templateEmailSubject)
@@ -348,17 +383,8 @@ function formatU3ADate(dte) {
   }
   const dateTimeFormat = new Intl.DateTimeFormat('en-AU', config)
 
-  const [
-    { value: weekday },
-    ,
-    { value: day },
-    ,
-    { value: month },
-    ,
-    { value: year },
-    ,
-    { value: hour },
-  ] = dateTimeFormat.formatToParts(new Date(dte))
+  const [{ value: weekday }, , { value: day }, , { value: month }, , { value: year }, , { value: hour }] =
+    dateTimeFormat.formatToParts(new Date(dte))
 
   return `${weekday} ${day}-${month}`
 }
